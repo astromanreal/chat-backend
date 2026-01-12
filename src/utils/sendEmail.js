@@ -14,6 +14,12 @@ const sendEmail = async (options) => {
   let htmlBody;
   let textBody;
 
+  // Shared modern styles
+  const bodyStyle = "background-color: #f8f9fa; font-family: Arial, sans-serif; color: #212529; margin: 0; padding: 20px;";
+  const tableStyle = "max-width: 600px; width: 100%; margin: 40px auto; background-color: #ffffff; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.05);";
+  const pStyle = "color: #495057; font-size: 16px; line-height: 1.6;";
+  const footerStyle = "padding: 30px; font-size: 12px; color: #6c757d; text-align: center;";
+
   if (options.type === 'welcome') {
     const { username, websiteLink } = options.context;
     htmlBody = `
@@ -22,41 +28,37 @@ const sendEmail = async (options) => {
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Welcome Aboard!</title>
+        <title>Welcome to Cryptic Connect</title>
     </head>
-    <body style="font-family: Arial, sans-serif; background-color: #0c1427; color: #e0e0e0; margin: 0; padding: 20px;">
-        <table width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 600px; margin: auto; background-color: #162447; border-radius: 12px; box-shadow: 0 8px 16px rgba(0,0,0,0.4); border: 1px solid #334a8a;">
+    <body style="${bodyStyle}">
+        <table role="presentation" border="0" cellpadding="0" cellspacing="0" style="${tableStyle}">
             <tr>
-                <td align="center" style="padding: 40px 20px 20px 20px;">
-                    <h1 style="color: #ffffff; margin: 0; font-size: 48px; font-weight: 700;">🚀</h1>
+                <td align="center" style="padding: 40px 30px 20px 30px;">
+                    <h1 style="color: #212529; margin: 0; font-size: 28px; font-weight: 600;">Welcome to Cryptic Connect</h1>
                 </td>
             </tr>
             <tr>
-                <td align="center" style="padding: 0 20px 20px 20px;">
-                     <h2 style="color: #ffffff; margin: 0; font-size: 26px; font-weight: bold;">Welcome Aboard, ${username}!</h2>
+                <td style="padding: 20px 40px;">
+                    <p style="${pStyle}">Hi ${username},</p>
+                    <p style="${pStyle}">Thanks for signing up! We're excited to have you join our community for secure and private conversations.</p>
                 </td>
             </tr>
             <tr>
-                <td style="padding: 20px 40px 30px 40px; color: #c0c0c0; font-size: 16px; line-height: 1.7; text-align: center;">
-                    <p style="margin: 0;">Your account is verified and your mission is ready to begin. You are now an official member of the <strong>Space Exploration</strong> crew.</p>
-                    <p style="margin-top: 15px;">Prepare for liftoff and start discovering the cosmos with us.</p>
+                <td align="center" style="padding: 30px;">
+                    <a href="${websiteLink}" style="background-color: #6f42c1; color: #ffffff; padding: 14px 28px; text-decoration: none; border-radius: 6px; font-weight: bold; font-size: 16px; display: inline-block;">Go to Your Dashboard</a>
                 </td>
             </tr>
             <tr>
-                <td align="center" style="padding: 10px 0 40px 0;">
-                    <a href="${websiteLink}" style="background-color: #6f42c1; color: #ffffff; padding: 16px 30px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; display: inline-block; box-shadow: 0 4px 8px rgba(111, 66, 193, 0.3);">Launch Dashboard</a>
-                </td>
-            </tr>
-            <tr>
-                <td align="center" style="padding: 20px; font-size: 12px; color: #7f8c8d; border-top: 1px solid #334a8a;">
-                    <p style="margin:0;">&copy; ${new Date().getFullYear()} Space Exploration. All Rights Reserved.</p>
+                <td style="${footerStyle}">
+                     <hr style="border: 0; border-top: 1px solid #e9ecef; margin-bottom: 20px;">
+                    <p style="margin:0;">&copy; ${new Date().getFullYear()} Cryptic Connect. All Rights Reserved.</p>
                 </td>
             </tr>
         </table>
     </body>
     </html>
     `;
-    textBody = `Welcome aboard, ${username}! Your account is verified and your mission is ready to begin. Launch your dashboard here: ${websiteLink}`;
+    textBody = `Welcome, ${username}! Your secure account for Cryptic Connect has been created. Get started here: ${websiteLink}`;
 
   } else { // Default to the OTP email template
     const otp = options.message;
@@ -66,31 +68,29 @@ const sendEmail = async (options) => {
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>${options.subject}</title>
     </head>
-    <body style="font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #f9f9f9;">
-        <table width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 500px; margin: auto; background-color: #ffffff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+    <body style="${bodyStyle}">
+        <table role="presentation" border="0" cellpadding="0" cellspacing="0" style="${tableStyle}">
             <tr>
-                <td align="center" style="padding: 30px 20px;">
-                    <h1 style="color: #333; margin: 0; font-size: 22px;">${options.subject}</h1>
+                <td align="center" style="padding: 40px 30px 20px 30px;">
+                    <h1 style="color: #212529; margin: 0; font-size: 24px; font-weight: 600;">${options.subject}</h1>
                 </td>
             </tr>
             <tr>
-                <td align="center" style="padding: 0 20px 20px 20px;">
-                    <p style="color: #555; font-size: 16px;">Your one-time verification code is:</p>
-                </td>
-            </tr>
-            <tr>
-                <td align="center" style="padding-bottom: 30px;">
-                    <div style="background-color: #f0f0f0; border-radius: 5px; padding: 12px 20px; display: inline-block;">
-                        <h2 style="color: #333; font-size: 30px; font-weight: bold; margin: 0; letter-spacing: 3px;">
+                <td align="center" style="padding: 20px 30px;">
+                    <p style="${pStyle}">Your one-time verification code is:</p>
+                    <div style="background-color: #e9ecef; border-radius: 6px; padding: 15px 25px; margin: 20px 0; display: inline-block;">
+                        <h2 style="color: #212529; font-size: 32px; font-weight: 700; margin: 0; letter-spacing: 4px; font-family: 'Courier New', Courier, monospace;">
                             ${otp}
                         </h2>
                     </div>
                 </td>
             </tr>
             <tr>
-                <td align="center" style="padding: 0 20px 30px 20px;">
-                   <p style="font-size: 14px; color: #888;">If you did not request this code, you can safely ignore this email.</p>
+                <td style="${footerStyle}">
+                    <hr style="border: 0; border-top: 1px solid #e9ecef; margin-bottom: 20px;">
+                    <p style="margin:0;">If you did not request this code, you can safely ignore this email.</p>
                 </td>
             </tr>
         </table>
@@ -101,7 +101,7 @@ const sendEmail = async (options) => {
   }
 
   const mailOptions = {
-    from: `"Space Exploration" <${process.env.EMAIL_FROM}>`,
+    from: `"Cryptic Connect" <${process.env.EMAIL_FROM}>`,
     to: options.email,
     subject: options.subject,
     html: htmlBody,

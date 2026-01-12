@@ -6,7 +6,7 @@ import cors from 'cors';
 import connectDB from './config/db.js';
 import authRoutes from './routes/auth.js';
 import userRoutes from './routes/user.js';
-import errorHandler from './middleware/errorHandler.js'; // Import the new middleware
+import errorHandler from './middleware/errorHandler.js';
 
 connectDB();
 const app = express();
@@ -14,17 +14,14 @@ const app = express();
 app.use(helmet());
 app.use(cors());
 app.use(express.json());
+app.use(errorHandler); 
 
-// Root route for health check
 app.get('/', (req, res) => {
   res.json({ message: 'API is running...' });
 });
 
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
-
-// This MUST be the last middleware
-app.use(errorHandler); 
 
 const PORT = process.env.PORT || 5000;
 

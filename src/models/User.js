@@ -7,7 +7,10 @@ const UserSchema = new mongoose.Schema({
     required: [true, 'Please provide a username'],
     unique: true,
     trim: true,
-    lowercase: true, 
+    lowercase: true,
+    minlength: [3, 'Username must be at least 3 characters'],
+    maxlength: [20, 'Username cannot be more than 20 characters'],
+    match: [/^[a-zA-Z0-9_.]+$/, 'Username can only contain letters, numbers, underscores, and periods'],
   },
   name: {
     type: String,
@@ -15,6 +18,8 @@ const UserSchema = new mongoose.Schema({
   },
   bio: {
     type: String,
+    trim: true,
+    maxlength: [160, 'Bio cannot be more than 160 characters'],
     default: ''
   },
   email: {
@@ -30,8 +35,8 @@ const UserSchema = new mongoose.Schema({
   password: {
     type: String,
     required: [true, 'Please provide a password'],
-    minlength: [6, 'Password must be at least 6 characters'],
-    select: false, 
+    minlength: [8, 'Password must be at least 8 characters'],
+    select: false, // Do not return password by default
   },
   isVerified: {
     type: Boolean,
@@ -45,18 +50,22 @@ const UserSchema = new mongoose.Schema({
     type: Date,
     select: false,
   },
+}, {
+  timestamps: true // Automatically add createdAt and updatedAt fields
 });
 
-// Corrected pre-save hook
+// Hash password before saving
 UserSchema.pre('save', async function () {
-  // Only hash the password if it has been modified (or is new)
   if (!this.isModified('password')) {
     return;
   }
-
-  // Hash the password with a salt round of 10
   const salt = await bcrypt.genSalt(10);
   this.password = await bcrypt.hash(this.password, salt);
 });
+
+// Method to compare entered password with hashed password
+UserSchema.methods.matchPassword = async function (enteredPassword) {
+  return await bcrypt.compare(enteredPassword, this.password);
+};
 
 export default mongoose.model('User', UserSchema);

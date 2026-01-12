@@ -119,7 +119,7 @@ export const login = asyncHandler(async (req, res) => {
 
     const user = await User.findOne({ email }).select('+password');
 
-    if (!user || !(await bcrypt.compare(password, user.password))) {
+    if (!user || !(await user.matchPassword(password))) {
         res.status(401);
         throw new Error('Invalid credentials');
     }
