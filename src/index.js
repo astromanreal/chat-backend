@@ -6,6 +6,7 @@ import cors from 'cors';
 import connectDB from './config/db.js';
 import authRoutes from './routes/auth.js';
 import userRoutes from './routes/user.js';
+import errorHandler from './middleware/errorHandler.js'; // Import the new middleware
 
 connectDB();
 const app = express();
@@ -21,6 +22,9 @@ app.get('/', (req, res) => {
 
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
+
+// This MUST be the last middleware
+app.use(errorHandler); 
 
 const PORT = process.env.PORT || 5000;
 
