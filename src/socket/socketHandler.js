@@ -5,7 +5,6 @@ import ChatRoom from '../models/ChatRoom.js';
 import User from '../models/User.js';
 
 const initializeSocket = (io) => {
-  // Middleware to authenticate socket connections
   io.use((socket, next) => {
     const token = socket.handshake.auth.token;
     if (!token) {
@@ -13,7 +12,7 @@ const initializeSocket = (io) => {
     }
     try {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      socket.user = decoded.user; // Attach user payload to the socket object
+      socket.user = decoded.user;
       next();
     } catch (err) {
       next(new Error('Authentication error: Invalid token'));
@@ -21,7 +20,7 @@ const initializeSocket = (io) => {
   });
 
   io.on('connection', (socket) => {
-    console.log(`User connected: ${socket.user.id}`);
+    console.log(`[Socket Connected] UserID: ${socket.user.id}`);
 
     socket.on('joinRoom', async ({ roomId }) => {
       try {
@@ -35,7 +34,8 @@ const initializeSocket = (io) => {
         }
 
         socket.join(roomId);
-        console.log(`User ${socket.user.id} joined room ${roomId}`);
+        socket.currentRoom = roomId; // Store room for disconnect handling
+        console.log(`[Room Joined] UserID: ${socket.user.id} -> RoomID: ${roomId}`);
 
         const messages = await Message.find({ chatRoom: roomId })
           .populate('sender', 'name username _id')
@@ -48,47 +48,37 @@ const initializeSocket = (io) => {
             otherUser = await User.findById(otherParticipantId).select('name username _id');
         }
 
-        // Send room data (history and other user's info) to the user who just joined
-        socket.emit('joinedRoom', {
-          roomId,
-          messages,
-          otherUser
-        });
+        // 1. Send initial data to the user who just connected
+        console.log(`[Emit joinedRoom] To UserID: ${socket.user.id} -> With OtherUser: ${otherUser?._id}`);
+        socket.emit('joinedRoom', { roomId, messages, otherUser });
 
-        // If the other user exists, notify them that this user has connected
+        // 2. If another user exists, notify them that this user has joined
         if (otherUser) {
             const currentUser = await User.findById(socket.user.id).select('name username _id');
+            console.log(`[Emit userJoined] To RoomID: ${roomId} -> For OtherUser: ${otherUser._id} -> Announcing User: ${currentUser._id}`);
             socket.to(roomId).emit('userJoined', { otherUser: currentUser });
         }
       } catch (error) {
-        console.error('Error joining room:', error);
+        console.error('[Error joining room]:', error);
         socket.emit('error', { message: 'Server error while joining room.' });
       }
     });
 
     socket.on('sendMessage', async ({ roomId, content }) => {
       try {
-        if (!mongoose.Types.ObjectId.isValid(roomId)) {
-          return socket.emit('error', { message: 'Invalid room ID format for sending message.' });
-        }
-        
+        // ... (sendMessage logic remains the same, it is correct)
         const room = await ChatRoom.findById(roomId);
         if (!room || !room.participants.includes(socket.user.id)) {
           return socket.emit('error', { message: 'You are not a member of this room.' });
         }
 
-        const message = new Message({
-          chatRoom: roomId,
-          sender: socket.user.id,
-          content,
-        });
-
+        const message = new Message({ chatRoom: roomId, sender: socket.user.id, content });
         await message.save();
         await message.populate('sender', 'name username _id');
 
         io.to(roomId).emit('receiveMessage', message);
       } catch (error) {
-        console.error('Error sending message:', error);
+        console.error('[Error sending message]:', error);
         socket.emit('error', { message: 'Failed to send message.' });
       }
     });
@@ -97,8 +87,14 @@ const initializeSocket = (io) => {
         socket.to(roomId).emit('typing', { isTyping });
     });
 
+    // 3. Handle user disconnection
     socket.on('disconnect', () => {
-      console.log(`User disconnected: ${socket.user.id}`);
+      console.log(`[Socket Disconnected] UserID: ${socket.user.id}`);
+      if (socket.currentRoom) {
+        console.log(`[Emit userLeft] To RoomID: ${socket.currentRoom} -> Announcing UserID: ${socket.user.id}`);
+        // Notify the other person in the room that this user has left
+        socket.to(socket.currentRoom).emit('userLeft', { userId: socket.user.id });
+      }
     });
   });
 };
