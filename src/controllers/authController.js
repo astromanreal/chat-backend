@@ -60,7 +60,7 @@ export const register = asyncHandler(async (req, res) => {
 
     const username = await findUniqueUsername();
 
-    const user = await User.create({ username, name: username, email, password });
+    const user = await User.create({ username, email, password });
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     user.otp = otp;

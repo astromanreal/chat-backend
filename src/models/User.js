@@ -1,3 +1,4 @@
+
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
 
@@ -35,8 +36,8 @@ const UserSchema = new mongoose.Schema({
   password: {
     type: String,
     required: [true, 'Please provide a password'],
-    minlength: [8, 'Password must be at least 8 characters'],
-    select: false, // Do not return password by default
+    minlength: [6, 'Password must be at least 6 characters'],
+    select: false
   },
   isVerified: {
     type: Boolean,
