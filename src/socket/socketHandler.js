@@ -2,6 +2,7 @@ import jwt from 'jsonwebtoken';
 import mongoose from 'mongoose';
 import Message from '../models/Message.js';
 import ChatRoom from '../models/ChatRoom.js';
+import User from '../models/User.js';
 
 const initializeSocket = (io) => {
   // Middleware to authenticate socket connections
@@ -22,43 +23,58 @@ const initializeSocket = (io) => {
   io.on('connection', (socket) => {
     console.log(`User connected: ${socket.user.id}`);
 
-    // Event to join a specific chat room
     socket.on('joinRoom', async ({ roomId }) => {
       try {
         if (!mongoose.Types.ObjectId.isValid(roomId)) {
-            socket.emit('error', { message: 'Invalid room ID format.' });
-            return;
+          return socket.emit('error', { message: 'Invalid room ID format.' });
         }
 
         const room = await ChatRoom.findById(roomId);
-
         if (!room || !room.participants.includes(socket.user.id)) {
-          socket.emit('error', { message: 'Not authorized to join this room.' });
-          return;
+          return socket.emit('error', { message: 'Not authorized to join this room.' });
         }
 
         socket.join(roomId);
         console.log(`User ${socket.user.id} joined room ${roomId}`);
-        socket.emit('joinedRoom', { roomId });
 
+        const messages = await Message.find({ chatRoom: roomId })
+          .populate('sender', 'name username _id')
+          .sort({ createdAt: 'asc' });
+
+        const otherParticipantId = room.participants.find(id => id.toString() !== socket.user.id);
+        
+        let otherUser = null;
+        if (otherParticipantId) {
+            otherUser = await User.findById(otherParticipantId).select('name username _id');
+        }
+
+        // Send room data (history and other user's info) to the user who just joined
+        socket.emit('joinedRoom', {
+          roomId,
+          messages,
+          otherUser
+        });
+
+        // If the other user exists, notify them that this user has connected
+        if (otherUser) {
+            const currentUser = await User.findById(socket.user.id).select('name username _id');
+            socket.to(roomId).emit('userJoined', { otherUser: currentUser });
+        }
       } catch (error) {
         console.error('Error joining room:', error);
         socket.emit('error', { message: 'Server error while joining room.' });
       }
     });
 
-    // Event to handle incoming chat messages
     socket.on('sendMessage', async ({ roomId, content }) => {
       try {
         if (!mongoose.Types.ObjectId.isValid(roomId)) {
-            socket.emit('error', { message: 'Invalid room ID format for sending message.' });
-            return;
+          return socket.emit('error', { message: 'Invalid room ID format for sending message.' });
         }
         
         const room = await ChatRoom.findById(roomId);
         if (!room || !room.participants.includes(socket.user.id)) {
-          socket.emit('error', { message: 'You are not a member of this room.' });
-          return;
+          return socket.emit('error', { message: 'You are not a member of this room.' });
         }
 
         const message = new Message({
@@ -68,19 +84,17 @@ const initializeSocket = (io) => {
         });
 
         await message.save();
+        await message.populate('sender', 'name username _id');
 
-        // Broadcast the message to all members of the room
-        io.to(roomId).emit('receiveMessage', {
-          _id: message._id,
-          chatRoom: roomId,
-          sender: socket.user.id,
-          content: message.content,
-          createdAt: message.createdAt,
-        });
+        io.to(roomId).emit('receiveMessage', message);
       } catch (error) {
         console.error('Error sending message:', error);
         socket.emit('error', { message: 'Failed to send message.' });
       }
+    });
+
+    socket.on('typing', ({ roomId, isTyping }) => {
+        socket.to(roomId).emit('typing', { isTyping });
     });
 
     socket.on('disconnect', () => {
