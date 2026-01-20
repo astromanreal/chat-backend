@@ -35,10 +35,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/chat', chatRoutes);
 
-// Centralized Error Handler
 app.use(errorHandler);
-
-// Initialize Socket.IO Handler
 initializeSocket(io);
 
 const PORT = process.env.PORT || 5000;
