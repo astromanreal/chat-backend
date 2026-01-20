@@ -20,14 +20,43 @@ const generateUniqueCode = async () => {
 // @route   POST /api/chat/create
 // @access  Private
 export const createChatRoom = asyncHandler(async (req, res) => {
-  const joinCode = await generateUniqueCode();
+  const { expiresIn, maxParticipants } = req.body;
   const creatorId = req.user.id;
 
-  const chatRoom = await ChatRoom.create({
-    joinCode,
+  const chatRoomData = {
+    joinCode: await generateUniqueCode(),
     creator: creatorId,
     participants: [creatorId],
-  });
+  };
+
+  // Handle optional maxParticipants
+  if (maxParticipants) {
+    chatRoomData.maxParticipants = parseInt(maxParticipants, 10);
+  }
+
+  // Handle optional expiresIn
+  if (expiresIn && expiresIn !== 'never') {
+    const now = new Date();
+    switch (expiresIn) {
+      case '10m':
+        now.setMinutes(now.getMinutes() + 10);
+        chatRoomData.expiresAt = now;
+        break;
+      case '1h':
+        now.setHours(now.getHours() + 1);
+        chatRoomData.expiresAt = now;
+        break;
+      case '24h':
+        now.setHours(now.getHours() + 24);
+        chatRoomData.expiresAt = now;
+        break;
+      default:
+        // If an invalid string is passed, it will be ignored and no expiration will be set.
+        break;
+    }
+  }
+
+  const chatRoom = await ChatRoom.create(chatRoomData);
 
   res.status(201).json({
     success: true,
@@ -51,59 +80,47 @@ export const joinChatRoom = asyncHandler(async (req, res) => {
     throw new Error('Please provide a join code.');
   }
 
-  // First, find the room to perform initial checks and see if user is already in.
-  const roomToCheck = await ChatRoom.findOne({ joinCode });
+  const room = await ChatRoom.findOne({ joinCode });
 
-  if (!roomToCheck) {
+  if (!room) {
     res.status(404);
     throw new Error('Invalid join code. Room not found.');
   }
   
-  if (roomToCheck.status !== 'active') {
+  if (room.status !== 'active') {
     res.status(403);
-    throw new Error(`This chat room is currently ${roomToCheck.status}.`);
+    throw new Error(`This chat room is currently ${room.status}.`);
   }
 
-  // Allow user to 're-join' if they are already a participant.
-  if (roomToCheck.participants.includes(userId)) {
-    res.status(200).json({
+  if (room.participants.includes(userId)) {
+    return res.status(200).json({
       success: true,
       message: 'You are already in this room.',
-      data: {
-        roomId: roomToCheck._id,
-      },
+      data: { roomId: room._id },
     });
-    return;
   }
 
-  // **ATOMIC OPERATION**
-  // Find a room that matches the code AND is not locked. Then, atomically
-  // add the user to the participants list and lock the room.
-  const updatedRoom = await ChatRoom.findOneAndUpdate(
-    {
-      joinCode: joinCode,
-      isLocked: false, // Condition: Only update if the room isn't already locked
-    },
-    {
-      $push: { participants: userId }, // Action: Add the new user
-      $set: { isLocked: true },       // Action: Lock the room
-    },
-    { new: true } // Option: Return the updated document
-  );
-
-  // If the atomic operation failed, updatedRoom will be null.
-  // This means the room was locked by another user between our initial check and now.
-  if (!updatedRoom) {
+  // Check if the room is full
+  if (room.participants.length >= room.maxParticipants) {
     res.status(403);
-    throw new Error('This chat room was locked just before you joined. Access denied.');
+    throw new Error('This chat room is already full.');
   }
 
-  // If we get here, the user successfully joined and the room is now locked.
+  // Add the user to the room
+  room.participants.push(userId);
+  
+  // Lock the room if it has reached its max capacity
+  if (room.participants.length === room.maxParticipants) {
+    room.status = 'locked';
+  }
+  
+  await room.save();
+
   res.status(200).json({
     success: true,
-    message: 'Successfully joined and locked the chat room.',
+    message: 'Successfully joined the chat room.',
     data: {
-      roomId: updatedRoom._id,
+      roomId: room._id,
     },
   });
 });
