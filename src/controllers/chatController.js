@@ -16,6 +16,43 @@ const generateUniqueCode = async () => {
   return code;
 };
 
+// @desc    Get the chat history for the authenticated user
+// @route   GET /api/chat/history
+// @access  Private
+export const getChatHistory = asyncHandler(async (req, res) => {
+  const userId = req.user.id;
+
+  const chatRooms = await ChatRoom.find({ participants: userId })
+    .populate('participants', '_id name username')
+    .sort({ updatedAt: -1 })
+    .lean();
+
+  const processedRooms = chatRooms.map(room => {
+    let otherParticipant = null;
+
+    if (room.participants.length === 2) {
+      const other = room.participants.find(p => p._id.toString() !== userId);
+      if (other) {
+        otherParticipant = {
+          _id: other._id,
+          name: other.name,
+          username: other.username,
+        };
+      }
+    }
+
+    return {
+      _id: room._id,
+      joinCode: room.joinCode,
+      status: room.status,
+      updatedAt: room.updatedAt,
+      otherParticipant,
+    };
+  });
+
+  res.status(200).json({ success: true, data: processedRooms });
+});
+
 // @desc    Get details of a specific chat room
 // @route   GET /api/chat/:roomId
 // @access  Private (Participants only)
@@ -30,7 +67,6 @@ export const getChatRoomDetails = asyncHandler(async (req, res) => {
     throw new Error('Chat room not found.');
   }
 
-  // Security Check: Ensure the requesting user is a member of the room
   const isParticipant = room.participants.some(
     (p) => p._id.toString() === req.user.id
   );
