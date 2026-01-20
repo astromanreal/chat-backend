@@ -18,9 +18,9 @@ router.get('/me', auth, userController.getMe);
 // @access  Private
 router.put('/me', auth, userController.updateMe);
 
-// @route   GET api/users/:id
-// @desc    Get user by ID
+// @route   GET api/users/:username
+// @desc    Get user by username
 // @access  Private
-router.get('/:id', auth, userController.getUser);
+router.get('/:username', auth, userController.getUser);
 
 export default router;

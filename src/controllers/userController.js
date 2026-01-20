@@ -1,6 +1,5 @@
 import User from '../models/User.js';
 import asyncHandler from 'express-async-handler';
-import mongoose from 'mongoose';
 
 // @desc    Get all users (for admin purposes, optional)
 export const getUsers = asyncHandler(async (req, res) => {
@@ -10,7 +9,7 @@ export const getUsers = asyncHandler(async (req, res) => {
 
 // @desc    Get current user's profile
 export const getMe = asyncHandler(async (req, res) => {
-  const user = await User.findById(req.user.id);
+  const user = await User.findById(req.user.id).select('-password');
   if (!user) {
     res.status(404);
     throw new Error('User not found');
@@ -18,32 +17,26 @@ export const getMe = asyncHandler(async (req, res) => {
   res.status(200).json({ success: true, data: user });
 });
 
-// @desc    Get user by ID or Username
+// @desc    Get user by Username
 // @access  Private
 export const getUser = asyncHandler(async (req, res) => {
-  const identifier = req.params.id;
-  let query;
-
-  // Check if the identifier is a valid MongoDB ObjectId
-  if (mongoose.Types.ObjectId.isValid(identifier)) {
-    query = { _id: identifier };
-  } else {
-    // If not a valid ID, assume it's a username
-    query = { username: identifier.toLowerCase() };
-  }
-
-  const user = await User.findOne(query).select('-password');
+  const { username } = req.params;
+  const user = await User.findOne({ username }).select('-password');
 
   if (!user) {
     res.status(404);
-    throw new Error('User not found');
+    throw new Error('User not found with that username.');
   }
 
-  res.json(user);
+  res.status(200).json({ success: true, data: user });
 });
 
-// @desc    Update current user's profile
+// @desc    Update current user's profile (name, username, and bio)
+// @access  Private
 export const updateMe = asyncHandler(async (req, res) => {
+  // Destructure all updatable fields from the request body
+  const { name, username, bio } = req.body;
+
   const user = await User.findById(req.user.id);
 
   if (!user) {
@@ -51,31 +44,25 @@ export const updateMe = asyncHandler(async (req, res) => {
     throw new Error('User not found');
   }
 
-  const { name, bio, username } = req.body;
-
-  if (username && username.toLowerCase() !== user.username) {
-    const newUsername = username.trim().toLowerCase();
-    const existingUser = await User.findOne({ username: newUsername });
-
+  // Check if the username is being changed and if the new one is already taken
+  if (username && username !== user.username) {
+    const existingUser = await User.findOne({ username });
     if (existingUser) {
-      res.status(400);
-      throw new Error('Username is already taken');
+      res.status(400); // Bad Request
+      throw new Error('Username is already taken.');
     }
-    user.username = newUsername;
+    user.username = username;
   }
 
-  if (name !== undefined) {
-    user.name = name;
-  }
-
-  if (bio !== undefined) {
-    user.bio = bio;
-  }
+  // Update name and bio if they are provided
+  user.name = name || user.name;
+  user.bio = bio !== undefined ? bio : user.bio;
 
   const updatedUser = await user.save();
 
-  res.status(200).json({
-    success: true,
-    data: updatedUser,
-  });
+  // Return the updated user, excluding the password
+  const userResponse = updatedUser.toObject();
+  delete userResponse.password;
+
+  res.status(200).json({ success: true, data: userResponse });
 });
