@@ -1,5 +1,6 @@
 import User from '../models/User.js';
 import asyncHandler from 'express-async-handler';
+import mongoose from 'mongoose';
 
 // @desc    Get all users (for admin purposes, optional)
 export const getUsers = asyncHandler(async (req, res) => {
@@ -17,19 +18,32 @@ export const getMe = asyncHandler(async (req, res) => {
   res.status(200).json({ success: true, data: user });
 });
 
-// @desc    Get user by ID
+// @desc    Get user by ID or Username
+// @access  Private
 export const getUser = asyncHandler(async (req, res) => {
-  const user = await User.findById(req.params.id);
+  const identifier = req.params.id;
+  let query;
+
+  // Check if the identifier is a valid MongoDB ObjectId
+  if (mongoose.Types.ObjectId.isValid(identifier)) {
+    query = { _id: identifier };
+  } else {
+    // If not a valid ID, assume it's a username
+    query = { username: identifier.toLowerCase() };
+  }
+
+  const user = await User.findOne(query).select('-password');
+
   if (!user) {
     res.status(404);
     throw new Error('User not found');
   }
+
   res.json(user);
 });
 
 // @desc    Update current user's profile
 export const updateMe = asyncHandler(async (req, res) => {
-  // Find the user from the token
   const user = await User.findById(req.user.id);
 
   if (!user) {
@@ -37,26 +51,19 @@ export const updateMe = asyncHandler(async (req, res) => {
     throw new Error('User not found');
   }
 
-  // Get the fields to update from the body
   const { name, bio, username } = req.body;
 
-  // Handle username update separately to check for uniqueness
   if (username && username.toLowerCase() !== user.username) {
     const newUsername = username.trim().toLowerCase();
-    // Check if the new username is already taken by another user
     const existingUser = await User.findOne({ username: newUsername });
 
     if (existingUser) {
       res.status(400);
       throw new Error('Username is already taken');
     }
-
-    // Mongoose validation will handle format and length checks on save
     user.username = newUsername;
   }
 
-  // Update other fields if they are provided in the request.
-  // This approach allows setting a field to an empty string like ''.
   if (name !== undefined) {
     user.name = name;
   }
@@ -65,10 +72,8 @@ export const updateMe = asyncHandler(async (req, res) => {
     user.bio = bio;
   }
 
-  // Save the updated user. Mongoose will run all model validations here.
   const updatedUser = await user.save();
 
-  // Return the updated user data
   res.status(200).json({
     success: true,
     data: updatedUser,
