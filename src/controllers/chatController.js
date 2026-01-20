@@ -16,6 +16,33 @@ const generateUniqueCode = async () => {
   return code;
 };
 
+// @desc    Get details of a specific chat room
+// @route   GET /api/chat/:roomId
+// @access  Private (Participants only)
+export const getChatRoomDetails = asyncHandler(async (req, res) => {
+  const room = await ChatRoom.findById(req.params.roomId).populate(
+    'participants',
+    '_id name username'
+  );
+
+  if (!room) {
+    res.status(404);
+    throw new Error('Chat room not found.');
+  }
+
+  // Security Check: Ensure the requesting user is a member of the room
+  const isParticipant = room.participants.some(
+    (p) => p._id.toString() === req.user.id
+  );
+
+  if (!isParticipant) {
+    res.status(403);
+    throw new Error('Access denied. You are not a member of this chat room.');
+  }
+
+  res.status(200).json({ success: true, data: room });
+});
+
 // @desc    Create a new chat room
 // @route   POST /api/chat/create
 // @access  Private
@@ -29,12 +56,10 @@ export const createChatRoom = asyncHandler(async (req, res) => {
     participants: [creatorId],
   };
 
-  // Handle optional maxParticipants
   if (maxParticipants) {
     chatRoomData.maxParticipants = parseInt(maxParticipants, 10);
   }
 
-  // Handle optional expiresIn
   if (expiresIn && expiresIn !== 'never') {
     const now = new Date();
     switch (expiresIn) {
@@ -51,7 +76,6 @@ export const createChatRoom = asyncHandler(async (req, res) => {
         chatRoomData.expiresAt = now;
         break;
       default:
-        // If an invalid string is passed, it will be ignored and no expiration will be set.
         break;
     }
   }
@@ -100,16 +124,13 @@ export const joinChatRoom = asyncHandler(async (req, res) => {
     });
   }
 
-  // Check if the room is full
   if (room.participants.length >= room.maxParticipants) {
     res.status(403);
     throw new Error('This chat room is already full.');
   }
 
-  // Add the user to the room
   room.participants.push(userId);
   
-  // Lock the room if it has reached its max capacity
   if (room.participants.length === room.maxParticipants) {
     room.status = 'locked';
   }
