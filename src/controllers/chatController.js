@@ -88,7 +88,7 @@ export const createChatRoom = asyncHandler(async (req, res) => {
 
   const chatRoomData = {
     joinCode: await generateUniqueCode(),
-    creator: creatorId,
+    creator: creatorId, // This correctly assigns the room creator
     participants: [creatorId],
   };
 
@@ -145,6 +145,12 @@ export const joinChatRoom = asyncHandler(async (req, res) => {
   if (!room) {
     res.status(404);
     throw new Error('Invalid join code. Room not found.');
+  }
+
+  // ADDED: Enforce the room lock
+  if (room.isLocked) {
+    res.status(403);
+    throw new Error('This chat room has been locked by the creator.');
   }
   
   if (room.status !== 'active') {

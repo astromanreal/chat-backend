@@ -34,30 +34,23 @@ const initializeSocket = (io) => {
         }
 
         socket.join(roomId);
-        socket.currentRoom = roomId; // Store room for disconnect handling
+        socket.currentRoom = roomId;
         console.log(`[Room Joined] UserID: ${socket.user.id} -> RoomID: ${roomId}`);
 
-        const messages = await Message.find({ chatRoom: roomId })
-          .populate('sender', 'name username _id')
-          .sort({ createdAt: 'asc' });
-
+        // ... (rest of the joinRoom logic is correct)
+        const messages = await Message.find({ chatRoom: roomId }).populate('sender', 'name username _id').sort({ createdAt: 'asc' });
         const otherParticipantId = room.participants.find(id => id.toString() !== socket.user.id);
-        
         let otherUser = null;
         if (otherParticipantId) {
             otherUser = await User.findById(otherParticipantId).select('name username _id');
         }
+        socket.emit('joinedRoom', { roomId, messages, otherUser, isLocked: room.isLocked }); // Send lock status on join
 
-        // 1. Send initial data to the user who just connected
-        console.log(`[Emit joinedRoom] To UserID: ${socket.user.id} -> With OtherUser: ${otherUser?._id}`);
-        socket.emit('joinedRoom', { roomId, messages, otherUser });
-
-        // 2. If another user exists, notify them that this user has joined
         if (otherUser) {
             const currentUser = await User.findById(socket.user.id).select('name username _id');
-            console.log(`[Emit userJoined] To RoomID: ${roomId} -> For OtherUser: ${otherUser._id} -> Announcing User: ${currentUser._id}`);
             socket.to(roomId).emit('userJoined', { otherUser: currentUser });
         }
+
       } catch (error) {
         console.error('[Error joining room]:', error);
         socket.emit('error', { message: 'Server error while joining room.' });
@@ -66,7 +59,6 @@ const initializeSocket = (io) => {
 
     socket.on('sendMessage', async ({ roomId, content }) => {
       try {
-        // ... (sendMessage logic remains the same, it is correct)
         const room = await ChatRoom.findById(roomId);
         if (!room || !room.participants.includes(socket.user.id)) {
           return socket.emit('error', { message: 'You are not a member of this room.' });
@@ -83,16 +75,43 @@ const initializeSocket = (io) => {
       }
     });
 
+    // ADDED: Real-time room lock/unlock handling
+    socket.on('toggleLockRoom', async ({ roomId }) => {
+      try {
+        const room = await ChatRoom.findById(roomId);
+        if (!room) {
+          return socket.emit('error', { message: 'Chat room not found.' });
+        }
+
+        if (room.creator.toString() !== socket.user.id) {
+          return socket.emit('error', { message: 'Only the creator can lock or unlock the room.' });
+        }
+
+        if (room.participants.length < 2 && !room.isLocked) {
+          return socket.emit('error', { message: 'A room can only be locked after a second participant has joined.' });
+        }
+
+        room.isLocked = !room.isLocked;
+        await room.save();
+
+        // Broadcast the new lock state to everyone in the room
+        io.to(roomId).emit('roomStateChanged', { isLocked: room.isLocked });
+
+        console.log(`[Room Lock Toggled] RoomID: ${roomId} -> Locked: ${room.isLocked}`);
+
+      } catch (error) {
+        console.error('[Error toggling room lock]:', error);
+        socket.emit('error', { message: 'Failed to update room lock state.' });
+      }
+    });
+
     socket.on('typing', ({ roomId, isTyping }) => {
         socket.to(roomId).emit('typing', { isTyping });
     });
 
-    // 3. Handle user disconnection
     socket.on('disconnect', () => {
       console.log(`[Socket Disconnected] UserID: ${socket.user.id}`);
       if (socket.currentRoom) {
-        console.log(`[Emit userLeft] To RoomID: ${socket.currentRoom} -> Announcing UserID: ${socket.user.id}`);
-        // Notify the other person in the room that this user has left
         socket.to(socket.currentRoom).emit('userLeft', { userId: socket.user.id });
       }
     });

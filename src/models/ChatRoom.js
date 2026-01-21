@@ -7,6 +7,7 @@ const chatRoomSchema = new mongoose.Schema(
       required: true,
       unique: true,
     },
+    // ADDED: To track who can lock/unlock the room
     creator: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
@@ -20,17 +21,21 @@ const chatRoomSchema = new mongoose.Schema(
     ],
     status: {
       type: String,
-      enum: ['active', 'locked', 'archived'],
+      enum: ['active', 'expired', 'archived'],
       default: 'active',
     },
     maxParticipants: {
       type: Number,
       default: 2,
-      min: 2,
     },
     expiresAt: {
       type: Date,
-      default: null, // No expiration by default
+      default: () => new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours from creation
+    },
+    // ADDED: To track the lock state of the room
+    isLocked: {
+      type: Boolean,
+      default: false,
     },
   },
   {
@@ -38,22 +43,16 @@ const chatRoomSchema = new mongoose.Schema(
   }
 );
 
-// Middleware to delete all associated messages before a chat room is deleted
-// This will trigger on methods like findByIdAndDelete, findOneAndDelete
-chatRoomSchema.pre('findOneAndDelete', async function (next) {
-  try {
-    const room = await this.model.findOne(this.getQuery());
-    if (room) {
-      // This will now correctly delete messages when a room is deleted by our job
-      await mongoose.model('Message').deleteMany({ chatRoom: room._id });
-    }
+// Middleware to delete associated messages when a room is removed
+chatRoomSchema.pre(
+  'deleteOne',
+  { document: true, query: false },
+  async function (next) {
+    console.log(`Deleting messages for room: ${this._id}`);
+    await mongoose.model('Message').deleteMany({ chatRoom: this._id });
     next();
-  } catch (err) {
-    next(err);
   }
-});
-
-// We have removed the TTL index. Deletion will be handled by a scheduled job.
+);
 
 const ChatRoom = mongoose.model('ChatRoom', chatRoomSchema);
 
