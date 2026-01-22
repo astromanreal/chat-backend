@@ -23,48 +23,107 @@ const initializeSocket = (io) => {
     const { id: userId } = socket.user;
     console.log(`[Socket Connected] UserID: ${userId}`);
 
-    // --- Existing Chat and Room Logic ---
+    // --- Chat and Room Logic ---
     socket.on('joinRoom', async ({ roomId }) => {
       try {
-        const room = await ChatRoom.findById(roomId).lean();
-        if (!room || !room.participants.find(p => p.toString() === userId)) {
+        if (!mongoose.Types.ObjectId.isValid(roomId)) {
+          return socket.emit('error', { message: 'Invalid room ID format.' });
+        }
+
+        const room = await ChatRoom.findById(roomId);
+        if (!room || !room.participants.includes(userId)) {
           return socket.emit('error', { message: 'Not authorized to join this room.' });
         }
 
         socket.join(roomId);
         socket.currentRoom = roomId;
         console.log(`[Room Joined] UserID: ${userId} -> RoomID: ${roomId}`);
+
+        const messages = await Message.find({ chatRoom: roomId })
+          .populate('sender', 'name username _id')
+          .sort({ createdAt: 'asc' });
+
+        const otherParticipantId = room.participants.find(id => id.toString() !== userId);
         
-        // Also pass the current voice call state when a user joins
+        let otherUser = null;
+        if (otherParticipantId) {
+            otherUser = await User.findById(otherParticipantId).select('name username _id');
+        }
+
         socket.emit('joinedRoom', { 
-          roomId, 
-          // ... other data
-          isLocked: room.isLocked,
-          voiceCall: room.voiceCall 
+            roomId, 
+            messages, 
+            otherUser, 
+            isLocked: room.isLocked,
+            voiceCall: room.voiceCall // Pass voice call state on join
         });
 
+        if (otherUser) {
+            const currentUser = await User.findById(userId).select('name username _id');
+            socket.to(roomId).emit('userJoined', { otherUser: currentUser });
+        }
       } catch (error) {
         console.error('[Error joining room]:', error);
         socket.emit('error', { message: 'Server error while joining room.' });
       }
     });
-    
+
     socket.on('sendMessage', async ({ roomId, content }) => {
-      // ... existing implementation ...
+      try {
+        const room = await ChatRoom.findById(roomId);
+        if (!room || !room.participants.includes(userId)) {
+          return socket.emit('error', { message: 'You are not a member of this room.' });
+        }
+
+        const message = new Message({ chatRoom: roomId, sender: userId, content });
+        await message.save();
+        await message.populate('sender', 'name username _id');
+
+        io.to(roomId).emit('receiveMessage', message);
+      } catch (error) {
+        console.error('[Error sending message]:', error);
+        socket.emit('error', { message: 'Failed to send message.' });
+      }
     });
 
     socket.on('toggleLockRoom', async ({ roomId }) => {
-      // ... existing implementation ...
-    });
-    
-    // --- ADDED: Voice Call Signaling Logic ---
+      try {
+        const room = await ChatRoom.findById(roomId);
+        if (!room) {
+          return socket.emit('error', { message: 'Chat room not found.' });
+        }
 
-    // Host initiates the call
+        if (room.creator.toString() !== userId) {
+          return socket.emit('error', { message: 'Only the creator can lock or unlock the room.' });
+        }
+
+        if (room.participants.length < 2 && !room.isLocked) {
+          return socket.emit('error', { message: 'A room can only be locked after a second participant has joined.' });
+        }
+
+        room.isLocked = !room.isLocked;
+        await room.save();
+
+        io.to(roomId).emit('roomStateChanged', { isLocked: room.isLocked });
+
+        console.log(`[Room Lock Toggled] RoomID: ${roomId} -> Locked: ${room.isLocked}`);
+
+      } catch (error) {
+        console.error('[Error toggling room lock]:', error);
+        socket.emit('error', { message: 'Failed to update room lock state.' });
+      }
+    });
+
+    socket.on('typing', ({ roomId, isTyping }) => {
+        socket.to(roomId).emit('typing', { isTyping });
+    });
+
+    // --- Voice Call Signaling Logic ---
+
     socket.on('start-call', async ({ roomId }) => {
         try {
             const room = await ChatRoom.findById(roomId);
             if (!room || room.creator.toString() !== userId) return;
-            // The API sets the state, the socket triggers the event
             io.to(roomId).emit('call-started', { voiceCall: room.voiceCall });
             console.log(`[Call Started] RoomID: ${roomId} by Host: ${userId}`);
         } catch (error) {
@@ -72,12 +131,10 @@ const initializeSocket = (io) => {
         }
     });
 
-    // Host ends the call
     socket.on('end-call', async ({ roomId }) => {
         try {
             const room = await ChatRoom.findById(roomId);
             if (!room || room.voiceCall.host.toString() !== userId) return;
-            // The API resets the state, the socket triggers the event
             io.to(roomId).emit('call-ended');
             console.log(`[Call Ended] RoomID: ${roomId} by Host: ${userId}`);
         } catch (error) {
@@ -85,7 +142,6 @@ const initializeSocket = (io) => {
         }
     });
     
-    // --- WebRTC Signaling Relay ---
     socket.on('webrtc-offer', ({ targetUserId, sdp }) => {
         io.to(targetUserId).emit('webrtc-offer', { senderUserId: userId, sdp });
     });
@@ -98,7 +154,6 @@ const initializeSocket = (io) => {
         io.to(targetUserId).emit('webrtc-ice-candidate', { senderUserId: userId, candidate });
     });
 
-    // --- Host Controls ---
     socket.on('update-mic-access', async ({ roomId, targetUserId, hasMicAccess }) => {
         try {
             const room = await ChatRoom.findById(roomId);
@@ -115,7 +170,6 @@ const initializeSocket = (io) => {
         }
     });
     
-    // --- Participant Self-Actions ---
     socket.on('update-mute-status', async ({ roomId, isMuted }) => {
         try {
             const room = await ChatRoom.findById(roomId);
@@ -125,7 +179,6 @@ const initializeSocket = (io) => {
             if (participant) {
                 participant.isMuted = isMuted;
                 await room.save();
-                // Broadcast change to everyone except the sender
                 socket.to(roomId).emit('mute-status-changed', { userId, isMuted });
             }
         } catch (error) {
@@ -137,8 +190,7 @@ const initializeSocket = (io) => {
     socket.on('disconnect', () => {
       console.log(`[Socket Disconnected] UserID: ${userId}`);
       if (socket.currentRoom) {
-        // Notify room that a user has left (useful for cleaning up call UI)
-        io.to(socket.currentRoom).emit('user-left-room', { userId });
+        socket.to(socket.currentRoom).emit('userLeft', { userId }); // Restored original event
       }
     });
   });
