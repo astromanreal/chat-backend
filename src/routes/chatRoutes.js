@@ -5,31 +5,28 @@ import {
   getChatRoomDetails, 
   getChatHistory 
 } from '../controllers/chatController.js';
-// ADDED: Import the new lock controller
 import { toggleRoomLock } from '../controllers/roomLockController.js';
+// ADDED: Import the new voice call controller
+import { startCall, endCall } from '../controllers/voiceCallController.js';
 import auth from '../middleware/auth.js';
 
 const router = express.Router();
 
-// @desc    Get the chat history for the authenticated user
-// @route   GET /api/chat/history
+// --- Chat & Room Management ---
 router.get('/history', auth, getChatHistory);
-
-// @desc    Create a new chat room
-// @route   POST /api/chat/create
 router.post('/create', auth, createChatRoom);
-
-// @desc    Join an existing chat room
-// @route   POST /api/chat/join
 router.post('/join', auth, joinChatRoom);
-
-// @desc    Get details of a specific chat room
-// @route   GET /api/chat/:roomId
 router.get('/:roomId', auth, getChatRoomDetails);
-
-// ADDED: Route to lock/unlock a chat room
-// @desc    Lock or unlock a specific chat room
-// @route   PUT /api/chat/:roomId/lock
 router.put('/:roomId/lock', auth, toggleRoomLock);
+
+// --- ADDED: Voice Call Management ---
+
+// @desc    Start a new voice call in a room
+// @route   POST /api/chat/:roomId/call/start
+router.post('/:roomId/call/start', auth, startCall);
+
+// @desc    End the current voice call in a room
+// @route   POST /api/chat/:roomId/call/end
+router.post('/:roomId/call/end', auth, endCall);
 
 export default router;
